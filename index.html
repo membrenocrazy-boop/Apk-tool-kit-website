@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>APK Toolkit</title>
+<style>
+body { margin:0; background:#0d0d0d; color:#eee; font-family:system-ui; display:flex; height:100vh; }
+#sidebar { width:280px; background:#111; border-right:1px solid #222; padding:10px; overflow:auto; }
+#main { flex:1; display:flex; flex-direction:column; }
+#editor { flex:1; background:#111; color:#0f0; font-family:monospace; padding:10px; border:none; resize:none; }
+#toolbar { background:#161616; padding:10px; border-bottom:1px solid #222; }
+button { background:#4af; color:#000; border:none; padding:8px 14px; margin:2px; border-radius:4px; cursor:pointer; }
+button:hover { background:#6cf; }
+input { background:#222; color:#eee; border:1px solid #333; padding:6px; }
+#log { height:120px; background:#000; color:#0f0; font-family:monospace; padding:8px; overflow:auto; }
+.file { padding:4px 8px; cursor:pointer; }
+.file:hover { background:#222; }
+</style>
+</head>
+<body>
+<div id="sidebar">
+  <input type="file" id="upload" multiple webkitdirectory>
+  <button onclick="uploadFiles()">Upload / Add Files</button>
+  <div id="tree"></div>
+</div>
+<div id="main">
+  <div id="toolbar">
+    <button onclick="decompile()">Decompile APK</button>
+    <button onclick="compileCpp()">Compile C++ → .so</button>
+    <button onclick="signAndPack()">Sign & Package APK</button>
+    <input type="text" id="apkname" placeholder="output name" value="modded.apk" style="width:180px">
+    <button onclick="download()">Download Result</button>
+    <span id="status">ready</span>
+  </div>
+  <textarea id="editor" placeholder="select a file to edit"></textarea>
+  <div id="log"></div>
+</div>
+
+<script>
+let currentFile = null;
+let files = {};
+
+function log(msg) {
+  document.getElementById('log').textContent += msg + '\n';
+  document.getElementById('log').scrollTop = 9999;
+}
+
+async function uploadFiles() {
+  const list = document.getElementById('upload').files;
+  for (let f of list) {
+    const text = await f.text();
+    files[f.webkitRelativePath || f.name] = text;
+  }
+  renderTree();
+  log('uploaded ' + list.length + ' files');
+}
+
+function renderTree() {
+  const tree = document.getElementById('tree');
+  tree.innerHTML = '';
+  Object.keys(files).sort().forEach(p => {
+    const div = document.createElement('div');
+    div.className = 'file';
+    div.textContent = p;
+    div.onclick = () => openFile(p);
+    tree.appendChild(div);
+  });
+}
+
+function openFile(p) {
+  currentFile = p;
+  document.getElementById('editor').value = files[p] || '';
+  document.getElementById('status').textContent = p;
+}
+
+document.getElementById('editor').oninput = () => {
+  if (currentFile) files[currentFile] = document.getElementById('editor').value;
+};
+
+async function decompile() {
+  log('decompile needs server + apktool');
+}
+
+async function compileCpp() {
+  const cpp = document.getElementById('editor').value;
+  if (!cpp.includes('#include')) { log('no cpp in editor'); return; }
+  log('sending cpp to compile...');
+  const form = new FormData();
+  form.append('cpp', new Blob([cpp], {type:'text/plain'}), 'mestro_menu.cpp');
+  const res = await fetch('/compile-so', {method:'POST', body:form});
+  if (res.ok) {
+    const blob = await res.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'libmestro_menu.so';
+    a.click();
+    log('downloaded .so');
+  } else log('compile failed');
+}
+
+async function signAndPack() {
+  const name = document.getElementById('apkname').value || 'modded.apk';
+  log('packaging as ' + name + '...');
+  const form = new FormData();
+  form.append('name', name);
+  const res = await fetch('/package', {method:'POST', body:form});
+  if (res.ok) {
+    const blob = await res.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    a.click();
+    log('downloaded ' + name);
+  } else log(await res.text());
+}
+
+function download() {
+  const blob = new Blob([JSON.stringify(files)], {type:'application/zip'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'project.zip';
+  a.click();
+}
+</script>
+</body>
+</html>
